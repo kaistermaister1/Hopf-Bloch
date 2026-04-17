@@ -70,8 +70,8 @@ npm run build
 
 - Drag the left view to orbit the projected Hopf fiber.
 - Use the mouse wheel on the left view to zoom.
-- Drag the point on the Bloch sphere to choose a state.
-- Drag empty space on the Bloch sphere to rotate it.
+- Left-drag on the Bloch sphere to choose a state.
+- Right-drag on the Bloch sphere to rotate it.
 - Hold `Shift` while dragging to pick the far hemisphere.
 - Press `F` to flip the selected point across the current Bloch view.
 - Press `P` to start or clear path tracing.

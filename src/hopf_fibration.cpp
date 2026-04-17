@@ -742,17 +742,16 @@ void UpdateDrawFrame() {
     }
 
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overSphere) {
-        const Vector2 selectedLocal = ProjectBlochToScreen(app.bloch, app.blochCamera, app.rightW, app.targetH, sphere.width * 0.5f);
-        const Vector2 selectedScreen{rightPanel.x + selectedLocal.x, rightPanel.y + selectedLocal.y};
-        if (Vector2Distance(mouse, selectedScreen) <= 64.0f) {
-            app.drag.draggingBloch = true;
-            PickBlochPoint(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
-        } else {
-            app.drag.rotatingBloch = true;
-        }
+        app.drag.draggingBloch = true;
+        PickBlochPoint(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
+    }
+    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && overSphere) {
+        app.drag.rotatingBloch = true;
     }
     if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
         app.drag.draggingBloch = false;
+    }
+    if (IsMouseButtonReleased(MOUSE_RIGHT_BUTTON)) {
         app.drag.rotatingBloch = false;
     }
     if (IsKeyPressed(KEY_F)) {
