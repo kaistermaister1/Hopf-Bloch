@@ -25,6 +25,13 @@ EM_JS(double, WebPointerDY, (), {
     Module.hopfInput.dy = 0;
     return value;
 });
+EM_JS(double, WebWheelDelta, (), {
+    if (!Module.hopfInput) return 0;
+    const value = Module.hopfInput.wheel || 0;
+    Module.hopfInput.wheel = 0;
+    return value;
+});
+EM_JS(int, WebLeftDown, (), { return Module.hopfInput && Module.hopfInput.leftDown ? 1 : 0; });
 EM_JS(int, WebLeftPressed, (), {
     if (!Module.hopfInput) return 0;
     const value = Module.hopfInput.leftPressed ? 1 : 0;
@@ -176,6 +183,7 @@ void CameraFrameBasis(const Camera3D& camera, Vector3& right, Vector3& up, Vecto
     up = Vector3Normalize(Vector3CrossProduct(right, forward));
 }
 
+#if !defined(PLATFORM_WEB)
 void StepRootTrackballCamera(
     Camera3D& camera,
     Rectangle viewport,
@@ -228,6 +236,7 @@ void StepRootTrackballCamera(
     up = Vector3Normalize(Vector3CrossProduct(right, forward));
     camera.up = up;
 }
+#endif
 
 void BlochCameraBasis(const Camera3D& blochCamera, Vector3& right, Vector3& up, Vector3& forward) {
     CameraFrameBasis(blochCamera, right, up, forward);
@@ -250,14 +259,14 @@ void StepBlochOrbit(Camera3D& blochCamera, bool rotating) {
 #endif
 
 #if defined(PLATFORM_WEB)
-void StepBlochOrbitDelta(Camera3D& blochCamera, Vector2 delta) {
+void StepCameraOrbitDelta(Camera3D& camera, Vector2 delta, float minR = 0.05f, float maxR = 60.0f) {
     if (Vector2Length(delta) < 0.001f) return;
 
-    const float rotSpeed = 3.0f / 600.0f;
-    Vector3 offset = Vector3Subtract(blochCamera.position, blochCamera.target);
+    const float rotSpeed = 0.01f;
+    Vector3 offset = Vector3Subtract(camera.position, camera.target);
     if (Vector3Length(offset) < 0.0001f) offset = {0.0f, -4.0f, 0.0f};
 
-    Vector3 up = blochCamera.up;
+    Vector3 up = camera.up;
     if (Vector3Length(up) < 0.0001f) up = {0.0f, 0.0f, 1.0f};
     up = Vector3Normalize(up);
 
@@ -276,11 +285,28 @@ void StepBlochOrbitDelta(Camera3D& blochCamera, Vector2 delta) {
         offset = nextOffset;
     }
 
-    blochCamera.position = Vector3Add(blochCamera.target, offset);
+    float r = Vector3Length(offset);
+    r = std::clamp(r, minR, maxR);
+    offset = Vector3Scale(Vector3Normalize(offset), r);
+
+    camera.position = Vector3Add(camera.target, offset);
     forward = Vector3Normalize(Vector3Negate(offset));
     right = Vector3Normalize(Vector3CrossProduct(forward, up));
     up = Vector3Normalize(Vector3CrossProduct(right, forward));
-    blochCamera.up = up;
+    camera.up = up;
+}
+
+void StepCameraZoomDelta(Camera3D& camera, float wheel, float minR = 0.05f, float maxR = 60.0f) {
+    if (std::fabs(wheel) < 0.001f) return;
+
+    const float zoomSpeed = 0.12f;
+    Vector3 offset = Vector3Subtract(camera.position, camera.target);
+    if (Vector3Length(offset) < 0.0001f) offset = {0.0f, -4.0f, 0.0f};
+
+    float r = Vector3Length(offset);
+    r *= std::exp(-wheel * zoomSpeed);
+    r = std::clamp(r, minR, maxR);
+    camera.position = Vector3Add(camera.target, Vector3Scale(Vector3Normalize(offset), r));
 }
 #endif
 
@@ -816,6 +842,8 @@ void UpdateDrawFrame() {
 #if defined(PLATFORM_WEB)
     const Vector2 mouse{static_cast<float>(WebPointerX()), static_cast<float>(WebPointerY())};
     const Vector2 mouseDelta{static_cast<float>(WebPointerDX()), static_cast<float>(WebPointerDY())};
+    const float wheelDelta = static_cast<float>(WebWheelDelta());
+    const bool leftDown = WebLeftDown() != 0;
     const bool leftPressed = WebLeftPressed() != 0;
     const bool leftReleased = WebLeftReleased() != 0;
     const bool rightPressed = WebRightPressed() != 0;
@@ -830,6 +858,9 @@ void UpdateDrawFrame() {
     const bool overSphere = CheckCollisionPointCircle(mouse, Vector2{sphere.x + sphere.width * 0.5f, sphere.y + sphere.height * 0.5f}, sphere.width * 0.5f);
     const bool overDefaultButton = CheckCollisionPointRec(mouse, defaultButton);
     const bool overRightPanel = CheckCollisionPointRec(mouse, rightPanel);
+#if defined(PLATFORM_WEB)
+    const bool overLeftViewport = CheckCollisionPointRec(mouse, leftViewport);
+#endif
 
     if (IsKeyPressed(KEY_P)) {
         app.pathTracing = !app.pathTracing;
@@ -902,12 +933,18 @@ void UpdateDrawFrame() {
         app.drag.hemisphere = (Vector3DotProduct(app.bloch, forward) <= 0.0f) ? -1.0f : 1.0f;
     }
 
-    StepRootTrackballCamera(app.camera, leftViewport, overDefaultButton, false, true, 3.5f, 18.0f);
 #if defined(PLATFORM_WEB)
+    if (leftDown && overLeftViewport && !overDefaultButton) {
+        StepCameraOrbitDelta(app.camera, mouseDelta, 3.5f, 18.0f);
+    }
+    if (overLeftViewport) {
+        StepCameraZoomDelta(app.camera, wheelDelta, 3.5f, 18.0f);
+    }
     if (app.drag.rotatingBloch) {
-        StepBlochOrbitDelta(app.blochCamera, mouseDelta);
+        StepCameraOrbitDelta(app.blochCamera, mouseDelta, 3.0f, 6.0f);
     }
 #else
+    StepRootTrackballCamera(app.camera, leftViewport, overDefaultButton, false, true, 3.5f, 18.0f);
     StepBlochOrbit(app.blochCamera, app.drag.rotatingBloch);
 #endif
 
