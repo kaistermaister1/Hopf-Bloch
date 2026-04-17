@@ -380,7 +380,7 @@ std::vector<CloudPoint> BuildReferenceHopfCloud(const ProjectionBasis& basis) {
     return cloud;
 }
 
-void DrawReferenceLatitudeTori(const ProjectionBasis& basis, float time) {
+void DrawReferenceLatitudeTori(const ProjectionBasis& basis) {
     const float latitudes[3] = {-HTML_REFERENCE_LATITUDE, 0.0f, HTML_REFERENCE_LATITUDE};
     const float phases[3] = {0.0f, TWO_PI / 3.0f, 2.0f * TWO_PI / 3.0f};
 
@@ -391,7 +391,7 @@ void DrawReferenceLatitudeTori(const ProjectionBasis& basis, float time) {
             for (int i = 0; i <= 192; ++i) {
                 const float u = static_cast<float>(i) / 192.0f;
                 const Vector3 n = BlochLatitudePoint(latitudes[band], TWO_PI * u);
-                const float phase = phases[phaseIdx] + 0.10f * std::sin(0.7f * time + band);
+                const float phase = phases[phaseIdx];
                 const Vector3 p = ProjectS3ToR3(HtmlSpinorOnFiber(n, phase), basis);
                 if (hasPrev) {
                     Color c = BlochColor(n);
@@ -434,7 +434,7 @@ void DrawHopfScene(
         for (const CloudPoint& point : cloud) {
             DrawPoint3D(point.position, point.color);
         }
-        DrawReferenceLatitudeTori(basis, time);
+        DrawReferenceLatitudeTori(basis);
     }
     DrawPathFibers(pathTrace, basis);
 
@@ -461,16 +461,16 @@ Rectangle BlochSphereRect(Rectangle panel) {
     return Rectangle{cx - r, cy - r, 2.0f * r, 2.0f * r};
 }
 
-Vector2 ProjectBlochToScreen(Vector3 n, Rectangle sphere, const Camera3D& blochCamera) {
-    const float r = sphere.width * 0.5f;
-    const float cx = sphere.x + r;
-    const float cy = sphere.y + r;
+Camera3D BlochRenderCamera(const Camera3D& blochCamera, int height, float sphereRadiusPixels) {
+    Camera3D camera = blochCamera;
+    camera.fovy = static_cast<float>(height) / std::max(1.0f, sphereRadiusPixels);
+    camera.projection = CAMERA_ORTHOGRAPHIC;
+    return camera;
+}
 
-    Vector3 right{};
-    Vector3 up{};
-    Vector3 forward{};
-    BlochCameraBasis(blochCamera, right, up, forward);
-    return Vector2{cx + Vector3DotProduct(n, right) * r, cy - Vector3DotProduct(n, up) * r};
+Vector2 ProjectBlochToScreen(Vector3 n, const Camera3D& blochCamera, int width, int height, float sphereRadiusPixels) {
+    const Camera3D camera = BlochRenderCamera(blochCamera, height, sphereRadiusPixels);
+    return GetWorldToScreenEx(n, camera, width, height);
 }
 
 bool PickBlochPoint(Vector2 mouse, Rectangle sphere, const Camera3D& blochCamera, float hemisphere, Vector3& blochOut) {
@@ -604,9 +604,7 @@ void DrawBlochScene3D(
     const Rectangle sphere = BlochSphereRect(panel);
     const float r = sphere.width * 0.5f;
 
-    Camera3D blochCam = blochCamera;
-    blochCam.fovy = static_cast<float>(height) / std::max(1.0f, r);
-    blochCam.projection = CAMERA_ORTHOGRAPHIC;
+    const Camera3D blochCam = BlochRenderCamera(blochCamera, height, r);
 
     BeginMode3D(blochCam);
     BeginBlendMode(BLEND_ALPHA);
@@ -624,7 +622,7 @@ void DrawBlochScene3D(
     EndBlendMode();
     EndMode3D();
 
-    const Vector2 p = ProjectBlochToScreen(bloch, sphere, blochCamera);
+    const Vector2 p = ProjectBlochToScreen(bloch, blochCamera, width, height, r);
     DrawCircleLines(static_cast<int>(p.x), static_cast<int>(p.y), 13.0f, WHITE);
 
     const int tx = 28;
@@ -744,9 +742,11 @@ void UpdateDrawFrame() {
     }
 
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overSphere) {
-        const Vector2 selectedScreen = ProjectBlochToScreen(app.bloch, sphere, app.blochCamera);
-        if (Vector2Distance(mouse, selectedScreen) <= 42.0f) {
+        const Vector2 selectedLocal = ProjectBlochToScreen(app.bloch, app.blochCamera, app.rightW, app.targetH, sphere.width * 0.5f);
+        const Vector2 selectedScreen{rightPanel.x + selectedLocal.x, rightPanel.y + selectedLocal.y};
+        if (Vector2Distance(mouse, selectedScreen) <= 64.0f) {
             app.drag.draggingBloch = true;
+            PickBlochPoint(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
         } else {
             app.drag.rotatingBloch = true;
         }
