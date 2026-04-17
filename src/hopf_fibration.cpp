@@ -498,6 +498,16 @@ bool PickBlochPoint(Vector2 mouse, Rectangle sphere, const Camera3D& blochCamera
     return len2 <= 1.08f;
 }
 
+bool IsBlochPointGrab(Vector2 mouse, Rectangle sphere, const Camera3D& blochCamera, float hemisphere, Vector3 bloch) {
+    Vector3 picked{};
+    if (!PickBlochPoint(mouse, sphere, blochCamera, hemisphere, picked)) {
+        return false;
+    }
+
+    const float alignment = Vector3DotProduct(NormalizeBloch(picked), NormalizeBloch(bloch));
+    return alignment > 0.982f;
+}
+
 void DrawBlochCircle3D(Vector3 center, Vector3 axisA, Vector3 axisB, float radius, Color color) {
     Vector3 prev{};
     bool hasPrev = false;
@@ -742,14 +752,19 @@ void UpdateDrawFrame() {
     }
 
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overSphere) {
-        app.drag.draggingBloch = true;
-        PickBlochPoint(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
+        if (IsBlochPointGrab(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch)) {
+            app.drag.draggingBloch = true;
+            PickBlochPoint(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
+        } else {
+            app.drag.rotatingBloch = true;
+        }
     }
     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && overSphere) {
         app.drag.rotatingBloch = true;
     }
     if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
         app.drag.draggingBloch = false;
+        app.drag.rotatingBloch = false;
     }
     if (IsMouseButtonReleased(MOUSE_RIGHT_BUTTON)) {
         app.drag.rotatingBloch = false;
