@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "bash scripts/build-web.sh",
+    "verify": "node scripts/verify-public-build.mjs"
+  },
+  "devDependencies": {}
+}

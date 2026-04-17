@@ -7,13 +7,11 @@ global phase fibers in `S^3` map down to quantum states on the Bloch sphere.
 
 ## What is here
 
-This repository has two entry points:
+The app is written in C++ with raylib. It runs as a native desktop app during
+development and as a WebAssembly/WebGL app on Vercel.
 
-- `src/hopf_fibration.cpp` is the native C++/raylib app. It shows the Hopf
-  fiber in `S^3` next to an interactive Bloch sphere picker, with a live
-  inverse-map error check.
-- `examples/hopf-fibration.html` is a self-contained browser prototype that
-  renders the same Hopf/Bloch idea with Three.js.
+`src/hopf_fibration.cpp` draws the projected Hopf fiber in `S^3` next to an
+interactive Bloch sphere picker, with a live inverse-map error check.
 
 ## Project Structure
 
@@ -22,17 +20,22 @@ This repository has two entry points:
 |-- README.md
 |-- docs/
 |   `-- screenshot.png        # README screenshot
-|-- examples/
-|   `-- hopf-fibration.html   # Browser-based Three.js demo
+|-- public/
+|   `-- index.html            # Vercel host page for the C++ WebAssembly app
 |-- scripts/
-|   `-- build.ps1             # Windows build helper for the C++ app
+|   |-- build-web.sh          # Emscripten/raylib web build for Vercel
+|   |-- build.ps1             # Windows desktop build helper
+|   `-- verify-public-build.mjs
+|-- package.json
+|-- vercel.json
 `-- src/
-    `-- hopf_fibration.cpp    # Native raylib implementation
+    `-- hopf_fibration.cpp    # Shared desktop and web implementation
 ```
 
-Generated app files go into `build/`, which is ignored by git.
+Native desktop build files go into `build/`, and temporary web toolchains go
+into `.webbuild/`. Both are ignored by git.
 
-## Build and Run
+## Run Locally
 
 The native app is currently set up for Windows with MSYS2 UCRT64, `g++`, and
 raylib installed under `C:/msys64/ucrt64`.
@@ -50,6 +53,18 @@ Run the math check without opening the visualization:
 
 Expected output is a pair of small floating-point errors for the Hopf map and
 unit-length spinor checks.
+
+## Build for Vercel
+
+The Vercel build command is `npm run build`. It runs `scripts/build-web.sh`,
+which downloads Emscripten, builds raylib for `PLATFORM_WEB`, and compiles the
+C++ app into `public/hopf_bloch.js` and `public/hopf_bloch.wasm`.
+
+```bash
+npm run build
+```
+
+`vercel.json` serves the generated `public/` directory.
 
 ## Controls
 

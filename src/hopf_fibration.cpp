@@ -7,6 +7,10 @@
 #include <string>
 #include <vector>
 
+#if defined(PLATFORM_WEB)
+#include <emscripten/emscripten.h>
+#endif
+
 namespace {
 
 constexpr int INITIAL_W = 1500;
@@ -547,6 +551,42 @@ void DrawDefaultFibrationsButton(Rectangle rect, bool showDefaultFibrations, boo
     DrawText(label, static_cast<int>(rect.x + 14.0f), static_cast<int>(rect.y + 11.0f), 18, text);
 }
 
+struct BlochMarker {
+    const char* label;
+    Vector3 position;
+    Color color;
+};
+
+const BlochMarker BLOCH_MARKERS[] = {
+    {"N", Vector3{0.0f, 0.0f, 1.0f}, Color{248, 83, 83, 255}},
+    {"S", Vector3{0.0f, 0.0f, -1.0f}, Color{84, 141, 255, 255}},
+    {"+", Vector3{1.0f, 0.0f, 0.0f}, Color{255, 149, 64, 255}},
+    {"-", Vector3{-1.0f, 0.0f, 0.0f}, Color{255, 224, 92, 255}},
+    {"i", Vector3{0.0f, 1.0f, 0.0f}, Color{198, 112, 255, 255}},
+};
+
+void DrawBlochMarkers3D() {
+    for (const BlochMarker& marker : BLOCH_MARKERS) {
+        DrawSphere(marker.position, 0.062f, marker.color);
+    }
+}
+
+void DrawBlochMarkerKey(int width) {
+    const int fontSize = 17;
+    const int itemW = 48;
+    const int markerCount = static_cast<int>(sizeof(BLOCH_MARKERS) / sizeof(BLOCH_MARKERS[0]));
+    const int totalW = itemW * markerCount;
+    int x = std::max(28, width - totalW - 28);
+    const int y = 34;
+
+    DrawRectangle(x - 14, y - 14, totalW + 24, 34, Color{7, 10, 15, 165});
+    for (const BlochMarker& marker : BLOCH_MARKERS) {
+        DrawCircle(x, y + 2, 6.0f, marker.color);
+        DrawText(marker.label, x + 12, y - 7, fontSize, Color{222, 233, 236, 255});
+        x += itemW;
+    }
+}
+
 void DrawBlochScene3D(
     int width,
     int height,
@@ -575,6 +615,7 @@ void DrawBlochScene3D(
     DrawBlochCircle3D(Vector3{0.0f, 0.0f, HTML_REFERENCE_LATITUDE}, Vector3{1.0f, 0.0f, 0.0f}, Vector3{0.0f, 1.0f, 0.0f}, htmlRingRadius, Color{216, 235, 232, 105});
     DrawBlochCircle3D(Vector3{0.0f, 0.0f, -HTML_REFERENCE_LATITUDE}, Vector3{1.0f, 0.0f, 0.0f}, Vector3{0.0f, 1.0f, 0.0f}, htmlRingRadius, Color{216, 235, 232, 105});
     DrawBlochPath(pathTrace);
+    DrawBlochMarkers3D();
 
     const Color selected = BlochColor(bloch);
     DrawSphere(bloch, 0.055f, WHITE);
@@ -589,9 +630,8 @@ void DrawBlochScene3D(
     int ty = 28;
     DrawText("Bloch sphere", tx, ty, 30, RAYWHITE);
     ty += 42;
-    DrawText("Drag the point; drag empty sphere space to rotate.", tx, ty, 18, Color{194, 207, 214, 255});
-    ty += 24;
     DrawText("Hold Shift while dragging the point for the far side.", tx, ty, 18, Color{194, 207, 214, 255});
+    DrawBlochMarkerKey(width);
 
     const int infoY = std::min(static_cast<int>(sphere.y + sphere.height + 30.0f), height - 96);
     DrawText(TextFormat("n = (%.3f, %.3f, %.3f)", bloch.x, bloch.y, bloch.z), tx, infoY, 20, selected);
@@ -599,6 +639,179 @@ void DrawBlochScene3D(
     DrawText(TextFormat("side: %s", (hemisphere < 0.0f) ? "near hemisphere" : "far hemisphere"), tx, infoY + 54, 18, Color{191, 210, 213, 255});
     DrawBottomRightNote(width, height, pathTracing);
 }
+
+struct AppState {
+    ProjectionBasis basis{};
+    std::vector<CloudPoint> hopfCloud;
+    Vector3 bloch{};
+    DragState drag;
+    bool pathTracing = false;
+    bool showDefaultFibrations = true;
+    std::vector<Vector3> pathTrace;
+    Camera3D camera{};
+    Camera3D blochCamera{};
+    int leftW = 0;
+    int rightW = 0;
+    int targetH = 0;
+    RenderTexture2D leftTarget{};
+    RenderTexture2D rightTarget{};
+    bool targetsLoaded = false;
+};
+
+AppState app;
+
+void LoadPanelTargets(AppState& state, int leftW, int rightW, int targetH) {
+    if (state.targetsLoaded) {
+        UnloadRenderTexture(state.leftTarget);
+        UnloadRenderTexture(state.rightTarget);
+    }
+
+    state.leftW = leftW;
+    state.rightW = rightW;
+    state.targetH = targetH;
+    state.leftTarget = LoadRenderTexture(state.leftW, state.targetH);
+    state.rightTarget = LoadRenderTexture(state.rightW, state.targetH);
+    SetTextureFilter(state.leftTarget.texture, TEXTURE_FILTER_BILINEAR);
+    SetTextureFilter(state.rightTarget.texture, TEXTURE_FILTER_BILINEAR);
+    state.targetsLoaded = true;
+}
+
+void InitApp(AppState& state) {
+    state.basis = BuildProjectionBasis();
+    state.hopfCloud = BuildReferenceHopfCloud(state.basis);
+    state.bloch = NormalizeBloch(Vector3{0.58f, -0.48f, 0.66f});
+    state.pathTrace.clear();
+
+    state.camera.position = {5.0f, 3.0f, 5.0f};
+    state.camera.target = {0.0f, 0.0f, 0.0f};
+    state.camera.up = {0.0f, 1.0f, 0.0f};
+    state.camera.fovy = 45.0f;
+    state.camera.projection = CAMERA_PERSPECTIVE;
+
+    state.blochCamera.position = {0.0f, -4.0f, 0.0f};
+    state.blochCamera.target = {0.0f, 0.0f, 0.0f};
+    state.blochCamera.up = {0.0f, 0.0f, 1.0f};
+    state.blochCamera.fovy = 4.0f;
+    state.blochCamera.projection = CAMERA_ORTHOGRAPHIC;
+
+    const int leftW = std::max(320, static_cast<int>(GetScreenWidth() * 0.62f));
+    const int rightW = std::max(320, GetScreenWidth() - leftW);
+    const int targetH = std::max(320, GetScreenHeight());
+    LoadPanelTargets(state, leftW, rightW, targetH);
+}
+
+void UpdateDrawFrame() {
+    const int screenW = std::max(900, GetScreenWidth());
+    const int screenH = std::max(620, GetScreenHeight());
+    const int nextLeftW = std::max(360, static_cast<int>(screenW * 0.62f));
+    const int nextRightW = std::max(320, screenW - nextLeftW);
+    if (nextLeftW != app.leftW || nextRightW != app.rightW || screenH != app.targetH) {
+        LoadPanelTargets(app, nextLeftW, nextRightW, screenH);
+    }
+
+    const Rectangle leftViewport{0.0f, 0.0f, static_cast<float>(app.leftW), static_cast<float>(screenH)};
+    const Rectangle rightPanel{static_cast<float>(app.leftW), 0.0f, static_cast<float>(screenW - app.leftW), static_cast<float>(screenH)};
+    const Rectangle sphere = BlochSphereRect(rightPanel);
+    const Rectangle defaultButton{24.0f, static_cast<float>(screenH - 62), 252.0f, 40.0f};
+
+    const Vector2 mouse = GetMousePosition();
+    const bool overSphere = CheckCollisionPointCircle(mouse, Vector2{sphere.x + sphere.width * 0.5f, sphere.y + sphere.height * 0.5f}, sphere.width * 0.5f);
+    const bool overDefaultButton = CheckCollisionPointRec(mouse, defaultButton);
+
+    if (IsKeyPressed(KEY_P)) {
+        app.pathTracing = !app.pathTracing;
+        app.pathTrace.clear();
+        if (app.pathTracing) {
+            AddPathSample(app.pathTrace, app.bloch);
+        }
+    }
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overDefaultButton) {
+        app.showDefaultFibrations = !app.showDefaultFibrations;
+    }
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overSphere) {
+        const Vector2 selectedScreen = ProjectBlochToScreen(app.bloch, sphere, app.blochCamera);
+        if (Vector2Distance(mouse, selectedScreen) <= 28.0f) {
+            app.drag.draggingBloch = true;
+        } else {
+            app.drag.rotatingBloch = true;
+        }
+    }
+    if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+        app.drag.draggingBloch = false;
+        app.drag.rotatingBloch = false;
+    }
+    if (IsKeyPressed(KEY_F)) {
+        Vector3 right{};
+        Vector3 up{};
+        Vector3 forward{};
+        BlochCameraBasis(app.blochCamera, right, up, forward);
+        app.bloch = NormalizeBloch(Vector3Subtract(app.bloch, Vector3Scale(forward, 2.0f * Vector3DotProduct(app.bloch, forward))));
+        app.drag.hemisphere = (Vector3DotProduct(app.bloch, forward) <= 0.0f) ? -1.0f : 1.0f;
+    }
+    if (app.drag.draggingBloch) {
+        app.drag.hemisphere = (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 1.0f : -1.0f;
+        PickBlochPoint(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
+        if (app.pathTracing) {
+            AddPathSample(app.pathTrace, app.bloch);
+        }
+    } else {
+        Vector3 right{};
+        Vector3 up{};
+        Vector3 forward{};
+        BlochCameraBasis(app.blochCamera, right, up, forward);
+        app.drag.hemisphere = (Vector3DotProduct(app.bloch, forward) <= 0.0f) ? -1.0f : 1.0f;
+    }
+
+    StepRootTrackballCamera(app.camera, leftViewport, overDefaultButton, false, true, 3.5f, 18.0f);
+    StepBlochOrbit(app.blochCamera, app.drag.rotatingBloch);
+
+    BeginTextureMode(app.leftTarget);
+    BeginMode3D(app.camera);
+    DrawHopfScene(app.bloch, app.basis, app.hopfCloud, app.pathTrace, app.showDefaultFibrations, static_cast<float>(GetTime()));
+    EndMode3D();
+    DrawRectangle(18, 16, 350, 62, Color{7, 10, 15, 180});
+    DrawText("Hopf fiber in S3", 32, 28, 30, RAYWHITE);
+    EndTextureMode();
+
+    BeginTextureMode(app.rightTarget);
+    DrawBlochScene3D(app.rightW, app.targetH, app.bloch, app.blochCamera, app.pathTrace, app.pathTracing, app.drag.hemisphere, HopfInverseError(app.bloch));
+    EndTextureMode();
+
+    BeginDrawing();
+    ClearBackground(BLACK);
+    DrawTexturePro(
+        app.leftTarget.texture,
+        Rectangle{0.0f, 0.0f, static_cast<float>(app.leftTarget.texture.width), -static_cast<float>(app.leftTarget.texture.height)},
+        leftViewport,
+        Vector2{0.0f, 0.0f},
+        0.0f,
+        WHITE
+    );
+    DrawTexturePro(
+        app.rightTarget.texture,
+        Rectangle{0.0f, 0.0f, static_cast<float>(app.rightTarget.texture.width), -static_cast<float>(app.rightTarget.texture.height)},
+        rightPanel,
+        Vector2{0.0f, 0.0f},
+        0.0f,
+        WHITE
+    );
+    DrawRectangle(app.leftW - 1, 0, 2, screenH, Color{65, 77, 90, 255});
+    DrawDefaultFibrationsButton(defaultButton, app.showDefaultFibrations, overDefaultButton);
+    EndDrawing();
+}
+
+#if !defined(PLATFORM_WEB)
+void ShutdownApp(AppState& state) {
+    if (state.targetsLoaded) {
+        UnloadRenderTexture(state.leftTarget);
+        UnloadRenderTexture(state.rightTarget);
+        state.targetsLoaded = false;
+    }
+    CloseWindow();
+}
+#endif
 
 }  // namespace
 
@@ -610,150 +823,16 @@ int main(int argc, char** argv) {
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
     InitWindow(INITIAL_W, INITIAL_H, "Hopf Fibration: Bloch Sphere Fiber Picker");
     SetTargetFPS(60);
+    InitApp(app);
 
-    const ProjectionBasis basis = BuildProjectionBasis();
-    const std::vector<CloudPoint> hopfCloud = BuildReferenceHopfCloud(basis);
-    Vector3 bloch = NormalizeBloch(Vector3{0.58f, -0.48f, 0.66f});
-    DragState drag;
-    bool pathTracing = false;
-    bool showDefaultFibrations = true;
-    std::vector<Vector3> pathTrace;
-
-    Camera3D camera = {0};
-    camera.position = {5.0f, 3.0f, 5.0f};
-    camera.target = {0.0f, 0.0f, 0.0f};
-    camera.up = {0.0f, 1.0f, 0.0f};
-    camera.fovy = 45.0f;
-    camera.projection = CAMERA_PERSPECTIVE;
-
-    Camera3D blochCamera = {0};
-    blochCamera.position = {0.0f, -4.0f, 0.0f};
-    blochCamera.target = {0.0f, 0.0f, 0.0f};
-    blochCamera.up = {0.0f, 0.0f, 1.0f};
-    blochCamera.fovy = 4.0f;
-    blochCamera.projection = CAMERA_ORTHOGRAPHIC;
-
-    int leftW = std::max(320, static_cast<int>(GetScreenWidth() * 0.62f));
-    int rightW = std::max(320, GetScreenWidth() - leftW);
-    int targetH = std::max(320, GetScreenHeight());
-    RenderTexture2D leftTarget = LoadRenderTexture(leftW, targetH);
-    RenderTexture2D rightTarget = LoadRenderTexture(rightW, targetH);
-    SetTextureFilter(leftTarget.texture, TEXTURE_FILTER_BILINEAR);
-    SetTextureFilter(rightTarget.texture, TEXTURE_FILTER_BILINEAR);
-
+#if defined(PLATFORM_WEB)
+    emscripten_set_main_loop(UpdateDrawFrame, 0, 1);
+#else
     while (!WindowShouldClose()) {
-        const int screenW = std::max(900, GetScreenWidth());
-        const int screenH = std::max(620, GetScreenHeight());
-        const int nextLeftW = std::max(360, static_cast<int>(screenW * 0.62f));
-        const int nextRightW = std::max(320, screenW - nextLeftW);
-        if (nextLeftW != leftW || nextRightW != rightW || screenH != targetH) {
-            UnloadRenderTexture(leftTarget);
-            UnloadRenderTexture(rightTarget);
-            leftW = nextLeftW;
-            rightW = nextRightW;
-            targetH = screenH;
-            leftTarget = LoadRenderTexture(leftW, targetH);
-            rightTarget = LoadRenderTexture(rightW, targetH);
-            SetTextureFilter(leftTarget.texture, TEXTURE_FILTER_BILINEAR);
-            SetTextureFilter(rightTarget.texture, TEXTURE_FILTER_BILINEAR);
-        }
-
-        const Rectangle leftViewport{0.0f, 0.0f, static_cast<float>(leftW), static_cast<float>(screenH)};
-        const Rectangle rightPanel{static_cast<float>(leftW), 0.0f, static_cast<float>(screenW - leftW), static_cast<float>(screenH)};
-        const Rectangle sphere = BlochSphereRect(rightPanel);
-        const Rectangle defaultButton{24.0f, static_cast<float>(screenH - 62), 252.0f, 40.0f};
-
-        const Vector2 mouse = GetMousePosition();
-        const bool overSphere = CheckCollisionPointCircle(mouse, Vector2{sphere.x + sphere.width * 0.5f, sphere.y + sphere.height * 0.5f}, sphere.width * 0.5f);
-        const bool overDefaultButton = CheckCollisionPointRec(mouse, defaultButton);
-
-        if (IsKeyPressed(KEY_P)) {
-            pathTracing = !pathTracing;
-            pathTrace.clear();
-            if (pathTracing) {
-                AddPathSample(pathTrace, bloch);
-            }
-        }
-
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overDefaultButton) {
-            showDefaultFibrations = !showDefaultFibrations;
-        }
-
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overSphere) {
-            const Vector2 selectedScreen = ProjectBlochToScreen(bloch, sphere, blochCamera);
-            if (Vector2Distance(mouse, selectedScreen) <= 28.0f) {
-                drag.draggingBloch = true;
-            } else {
-                drag.rotatingBloch = true;
-            }
-        }
-        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-            drag.draggingBloch = false;
-            drag.rotatingBloch = false;
-        }
-        if (IsKeyPressed(KEY_F)) {
-            Vector3 right{};
-            Vector3 up{};
-            Vector3 forward{};
-            BlochCameraBasis(blochCamera, right, up, forward);
-            bloch = NormalizeBloch(Vector3Subtract(bloch, Vector3Scale(forward, 2.0f * Vector3DotProduct(bloch, forward))));
-            drag.hemisphere = (Vector3DotProduct(bloch, forward) <= 0.0f) ? -1.0f : 1.0f;
-        }
-        if (drag.draggingBloch) {
-            drag.hemisphere = (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 1.0f : -1.0f;
-            PickBlochPoint(mouse, sphere, blochCamera, drag.hemisphere, bloch);
-            if (pathTracing) {
-                AddPathSample(pathTrace, bloch);
-            }
-        } else {
-            Vector3 right{};
-            Vector3 up{};
-            Vector3 forward{};
-            BlochCameraBasis(blochCamera, right, up, forward);
-            drag.hemisphere = (Vector3DotProduct(bloch, forward) <= 0.0f) ? -1.0f : 1.0f;
-        }
-
-        StepRootTrackballCamera(camera, leftViewport, overDefaultButton, false, true, 3.5f, 18.0f);
-        StepBlochOrbit(blochCamera, drag.rotatingBloch);
-
-        BeginTextureMode(leftTarget);
-        BeginMode3D(camera);
-        DrawHopfScene(bloch, basis, hopfCloud, pathTrace, showDefaultFibrations, static_cast<float>(GetTime()));
-        EndMode3D();
-        DrawRectangle(18, 16, 570, 92, Color{7, 10, 15, 180});
-        DrawText("Hopf fiber in S3", 32, 28, 30, RAYWHITE);
-        DrawText("Left drag orbits with the quaternion camera. Wheel zooms.", 32, 67, 18, Color{196, 211, 215, 255});
-        EndTextureMode();
-
-        BeginTextureMode(rightTarget);
-        DrawBlochScene3D(rightW, targetH, bloch, blochCamera, pathTrace, pathTracing, drag.hemisphere, HopfInverseError(bloch));
-        EndTextureMode();
-
-        BeginDrawing();
-        ClearBackground(BLACK);
-        DrawTexturePro(
-            leftTarget.texture,
-            Rectangle{0.0f, 0.0f, static_cast<float>(leftTarget.texture.width), -static_cast<float>(leftTarget.texture.height)},
-            leftViewport,
-            Vector2{0.0f, 0.0f},
-            0.0f,
-            WHITE
-        );
-        DrawTexturePro(
-            rightTarget.texture,
-            Rectangle{0.0f, 0.0f, static_cast<float>(rightTarget.texture.width), -static_cast<float>(rightTarget.texture.height)},
-            rightPanel,
-            Vector2{0.0f, 0.0f},
-            0.0f,
-            WHITE
-        );
-        DrawRectangle(leftW - 1, 0, 2, screenH, Color{65, 77, 90, 255});
-        DrawDefaultFibrationsButton(defaultButton, showDefaultFibrations, overDefaultButton);
-        EndDrawing();
+        UpdateDrawFrame();
     }
+    ShutdownApp(app);
+#endif
 
-    UnloadRenderTexture(leftTarget);
-    UnloadRenderTexture(rightTarget);
-    CloseWindow();
     return 0;
 }

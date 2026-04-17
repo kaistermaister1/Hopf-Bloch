@@ -1,4 +1,5 @@
 build/
+.webbuild/
 *.exe
 *.dll
 *.o
@@ -11,3 +12,6 @@ compile_flags.txt
 
 node_modules/
 *.log
+
+public/hopf_bloch.js
+public/hopf_bloch.wasm

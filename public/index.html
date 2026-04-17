@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hopf-Bloch</title>
+  <style>
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #02050a;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      outline: none;
+    }
+
+    #status {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      z-index: 2;
+      padding: 8px 10px;
+      border: 1px solid rgba(194, 207, 214, 0.35);
+      background: rgba(7, 10, 15, 0.82);
+      color: #dce9ec;
+      font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" tabindex="0"></canvas>
+  <div id="status">Loading Hopf-Bloch...</div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const status = document.getElementById("status");
+
+    window.Module = {
+      canvas,
+      print(text) {
+        console.log(text);
+      },
+      printErr(text) {
+        console.error(text);
+      },
+      setStatus(text) {
+        status.textContent = text || "";
+        status.style.display = text ? "block" : "none";
+      },
+      locateFile(path) {
+        return path;
+      },
+    };
+
+    window.addEventListener("load", () => canvas.focus());
+  </script>
+  <script async src="/hopf_bloch.js"></script>
+</body>
+</html>
