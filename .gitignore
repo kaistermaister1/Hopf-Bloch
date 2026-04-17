@@ -1,0 +1,13 @@
+build/
+*.exe
+*.dll
+*.o
+*.obj
+
+.cache/
+.vscode/
+compile_commands.json
+compile_flags.txt
+
+node_modules/
+*.log
