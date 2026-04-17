@@ -10,20 +10,37 @@ PUBLIC_DIR="${ROOT}/public"
 
 mkdir -p "${BUILD_ROOT}" "${PUBLIC_DIR}"
 
-if [ ! -d "${EMSDK_DIR}/.git" ]; then
-  git clone --depth 1 https://github.com/emscripten-core/emsdk.git "${EMSDK_DIR}"
-fi
+prepare_git_checkout() {
+  local dir="$1"
+  local clone_args="$2"
+
+  if [ -e "${dir}" ] && [ ! -d "${dir}/.git" ]; then
+    rm -rf "${dir}"
+  fi
+
+  if [ ! -d "${dir}/.git" ]; then
+    # shellcheck disable=SC2086
+    git clone ${clone_args} "${dir}"
+  fi
+}
+
+prepare_git_checkout "${EMSDK_DIR}" "--depth 1 https://github.com/emscripten-core/emsdk.git"
 
 pushd "${EMSDK_DIR}" >/dev/null
+git fetch --depth 1 origin main
+git checkout -q FETCH_HEAD
 ./emsdk install latest
 ./emsdk activate latest
 # shellcheck disable=SC1091
 source ./emsdk_env.sh
 popd >/dev/null
 
-if [ ! -d "${RAYLIB_DIR}/.git" ]; then
-  git clone --depth 1 --branch "${RAYLIB_TAG}" https://github.com/raysan5/raylib.git "${RAYLIB_DIR}"
-fi
+prepare_git_checkout "${RAYLIB_DIR}" "--depth 1 --branch ${RAYLIB_TAG} https://github.com/raysan5/raylib.git"
+
+pushd "${RAYLIB_DIR}" >/dev/null
+git fetch --depth 1 origin "refs/tags/${RAYLIB_TAG}:refs/tags/${RAYLIB_TAG}"
+git checkout -q "${RAYLIB_TAG}"
+popd >/dev/null
 
 pushd "${RAYLIB_DIR}/src" >/dev/null
 make PLATFORM=PLATFORM_WEB GRAPHICS=GRAPHICS_API_OPENGL_ES2 RAYLIB_LIBTYPE=STATIC -B
