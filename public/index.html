@@ -49,16 +49,73 @@
 
     syncCanvasSize();
     window.addEventListener("resize", syncCanvasSize);
+
+    const hopfInput = {
+      x: 0,
+      y: 0,
+      dx: 0,
+      dy: 0,
+      leftDown: false,
+      leftPressed: false,
+      leftReleased: false,
+      rightDown: false,
+      rightPressed: false,
+      rightReleased: false,
+    };
+
+    function updatePointer(event) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+      const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+      hopfInput.dx += x - hopfInput.x;
+      hopfInput.dy += y - hopfInput.y;
+      hopfInput.x = x;
+      hopfInput.y = y;
+    }
+
+    canvas.addEventListener("pointermove", updatePointer);
     canvas.addEventListener("pointerdown", (event) => {
+      updatePointer(event);
+      hopfInput.dx = 0;
+      hopfInput.dy = 0;
+      if (event.button === 0) {
+        hopfInput.leftDown = true;
+        hopfInput.leftPressed = true;
+      }
+      if (event.button === 2) {
+        hopfInput.rightDown = true;
+        hopfInput.rightPressed = true;
+      }
       canvas.focus();
       if (canvas.setPointerCapture) {
         canvas.setPointerCapture(event.pointerId);
       }
+      event.preventDefault();
+    });
+    canvas.addEventListener("pointerup", (event) => {
+      updatePointer(event);
+      if (event.button === 0) {
+        hopfInput.leftDown = false;
+        hopfInput.leftReleased = true;
+      }
+      if (event.button === 2) {
+        hopfInput.rightDown = false;
+        hopfInput.rightReleased = true;
+      }
+      event.preventDefault();
+    });
+    canvas.addEventListener("pointercancel", (event) => {
+      hopfInput.leftDown = false;
+      hopfInput.leftReleased = true;
+      hopfInput.rightDown = false;
+      hopfInput.rightReleased = true;
+      event.preventDefault();
     });
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
     window.Module = {
       canvas,
+      hopfInput,
       print(text) {
         console.log(text);
       },

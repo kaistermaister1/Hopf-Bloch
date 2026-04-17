@@ -72,6 +72,7 @@ npm run build
 - Use the mouse wheel on the left view to zoom.
 - Drag the white point on the Bloch sphere to choose a state.
 - Drag empty space on the Bloch sphere to rotate it.
+- On web, drag inside the Bloch sphere to move the state; drag outside it to rotate.
 - Hold `Shift` while dragging to pick the far hemisphere.
 - Press `F` to flip the selected point across the current Bloch view.
 - Press `P` to start or clear path tracing.

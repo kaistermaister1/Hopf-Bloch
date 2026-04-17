@@ -10,6 +10,45 @@
 #if defined(PLATFORM_WEB)
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
+
+EM_JS(double, WebPointerX, (), { return Module.hopfInput ? Module.hopfInput.x : 0; });
+EM_JS(double, WebPointerY, (), { return Module.hopfInput ? Module.hopfInput.y : 0; });
+EM_JS(double, WebPointerDX, (), {
+    if (!Module.hopfInput) return 0;
+    const value = Module.hopfInput.dx || 0;
+    Module.hopfInput.dx = 0;
+    return value;
+});
+EM_JS(double, WebPointerDY, (), {
+    if (!Module.hopfInput) return 0;
+    const value = Module.hopfInput.dy || 0;
+    Module.hopfInput.dy = 0;
+    return value;
+});
+EM_JS(int, WebLeftPressed, (), {
+    if (!Module.hopfInput) return 0;
+    const value = Module.hopfInput.leftPressed ? 1 : 0;
+    Module.hopfInput.leftPressed = false;
+    return value;
+});
+EM_JS(int, WebLeftReleased, (), {
+    if (!Module.hopfInput) return 0;
+    const value = Module.hopfInput.leftReleased ? 1 : 0;
+    Module.hopfInput.leftReleased = false;
+    return value;
+});
+EM_JS(int, WebRightPressed, (), {
+    if (!Module.hopfInput) return 0;
+    const value = Module.hopfInput.rightPressed ? 1 : 0;
+    Module.hopfInput.rightPressed = false;
+    return value;
+});
+EM_JS(int, WebRightReleased, (), {
+    if (!Module.hopfInput) return 0;
+    const value = Module.hopfInput.rightReleased ? 1 : 0;
+    Module.hopfInput.rightReleased = false;
+    return value;
+});
 #endif
 
 namespace {
@@ -194,6 +233,7 @@ void BlochCameraBasis(const Camera3D& blochCamera, Vector3& right, Vector3& up, 
     CameraFrameBasis(blochCamera, right, up, forward);
 }
 
+#if !defined(PLATFORM_WEB)
 void StepBlochOrbit(Camera3D& blochCamera, bool rotating) {
     if (!rotating) return;
 
@@ -207,6 +247,42 @@ void StepBlochOrbit(Camera3D& blochCamera, bool rotating) {
         6.0f
     );
 }
+#endif
+
+#if defined(PLATFORM_WEB)
+void StepBlochOrbitDelta(Camera3D& blochCamera, Vector2 delta) {
+    if (Vector2Length(delta) < 0.001f) return;
+
+    const float rotSpeed = 3.0f / 600.0f;
+    Vector3 offset = Vector3Subtract(blochCamera.position, blochCamera.target);
+    if (Vector3Length(offset) < 0.0001f) offset = {0.0f, -4.0f, 0.0f};
+
+    Vector3 up = blochCamera.up;
+    if (Vector3Length(up) < 0.0001f) up = {0.0f, 0.0f, 1.0f};
+    up = Vector3Normalize(up);
+
+    Vector3 forward = Vector3Normalize(Vector3Negate(offset));
+    Vector3 right = Vector3Normalize(Vector3CrossProduct(forward, up));
+    if (Vector3Length(right) < 0.0001f) right = {1.0f, 0.0f, 0.0f};
+
+    const TrackQuat qYaw = QuatFromAxisAngleLocal(up, -rotSpeed * delta.x);
+    offset = QuatRotateVectorLocal(qYaw, offset);
+    up = QuatRotateVectorLocal(qYaw, up);
+
+    const TrackQuat qPitch = QuatFromAxisAngleLocal(right, -rotSpeed * delta.y);
+    const Vector3 nextOffset = QuatRotateVectorLocal(qPitch, offset);
+    const Vector3 nextForward = Vector3Normalize(Vector3Negate(nextOffset));
+    if (std::fabs(Vector3DotProduct(nextForward, up)) < 0.965f) {
+        offset = nextOffset;
+    }
+
+    blochCamera.position = Vector3Add(blochCamera.target, offset);
+    forward = Vector3Normalize(Vector3Negate(offset));
+    right = Vector3Normalize(Vector3CrossProduct(forward, up));
+    up = Vector3Normalize(Vector3CrossProduct(right, forward));
+    blochCamera.up = up;
+}
+#endif
 
 float Dot4(Vec4 a, Vec4 b) {
     return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
@@ -498,6 +574,7 @@ bool PickBlochPoint(Vector2 mouse, Rectangle sphere, const Camera3D& blochCamera
     return len2 <= 1.08f;
 }
 
+#if !defined(PLATFORM_WEB)
 bool IsBlochPointGrab(Vector2 mouse, Rectangle sphere, const Camera3D& blochCamera, float hemisphere, Vector3 bloch) {
     Vector3 picked{};
     if (!PickBlochPoint(mouse, sphere, blochCamera, hemisphere, picked)) {
@@ -507,6 +584,7 @@ bool IsBlochPointGrab(Vector2 mouse, Rectangle sphere, const Camera3D& blochCame
     const float alignment = Vector3DotProduct(NormalizeBloch(picked), NormalizeBloch(bloch));
     return alignment > 0.982f;
 }
+#endif
 
 void DrawBlochCircle3D(Vector3 center, Vector3 axisA, Vector3 axisB, float radius, Color color) {
     Vector3 prev{};
@@ -735,9 +813,23 @@ void UpdateDrawFrame() {
     const Rectangle sphere = BlochSphereRect(rightPanel);
     const Rectangle defaultButton{24.0f, static_cast<float>(screenH - 62), 252.0f, 40.0f};
 
+#if defined(PLATFORM_WEB)
+    const Vector2 mouse{static_cast<float>(WebPointerX()), static_cast<float>(WebPointerY())};
+    const Vector2 mouseDelta{static_cast<float>(WebPointerDX()), static_cast<float>(WebPointerDY())};
+    const bool leftPressed = WebLeftPressed() != 0;
+    const bool leftReleased = WebLeftReleased() != 0;
+    const bool rightPressed = WebRightPressed() != 0;
+    const bool rightReleased = WebRightReleased() != 0;
+#else
     const Vector2 mouse = GetMousePosition();
+    const bool leftPressed = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+    const bool leftReleased = IsMouseButtonReleased(MOUSE_LEFT_BUTTON);
+    const bool rightPressed = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+    const bool rightReleased = IsMouseButtonReleased(MOUSE_RIGHT_BUTTON);
+#endif
     const bool overSphere = CheckCollisionPointCircle(mouse, Vector2{sphere.x + sphere.width * 0.5f, sphere.y + sphere.height * 0.5f}, sphere.width * 0.5f);
     const bool overDefaultButton = CheckCollisionPointRec(mouse, defaultButton);
+    const bool overRightPanel = CheckCollisionPointRec(mouse, rightPanel);
 
     if (IsKeyPressed(KEY_P)) {
         app.pathTracing = !app.pathTracing;
@@ -747,11 +839,20 @@ void UpdateDrawFrame() {
         }
     }
 
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overDefaultButton) {
+    if (leftPressed && overDefaultButton) {
         app.showDefaultFibrations = !app.showDefaultFibrations;
     }
 
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overSphere) {
+#if defined(PLATFORM_WEB)
+    if (leftPressed && overRightPanel && !overDefaultButton) {
+        if (overSphere) {
+            app.drag.draggingBloch = true;
+        } else {
+            app.drag.rotatingBloch = true;
+        }
+    }
+#else
+    if (leftPressed && overSphere) {
         if (IsBlochPointGrab(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch)) {
             app.drag.draggingBloch = true;
             PickBlochPoint(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
@@ -759,14 +860,15 @@ void UpdateDrawFrame() {
             app.drag.rotatingBloch = true;
         }
     }
-    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && overSphere) {
+#endif
+    if (rightPressed && overRightPanel) {
         app.drag.rotatingBloch = true;
     }
-    if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+    if (leftReleased) {
         app.drag.draggingBloch = false;
         app.drag.rotatingBloch = false;
     }
-    if (IsMouseButtonReleased(MOUSE_RIGHT_BUTTON)) {
+    if (rightReleased) {
         app.drag.rotatingBloch = false;
     }
     if (IsKeyPressed(KEY_F)) {
@@ -779,7 +881,16 @@ void UpdateDrawFrame() {
     }
     if (app.drag.draggingBloch) {
         app.drag.hemisphere = (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 1.0f : -1.0f;
+#if defined(PLATFORM_WEB)
+        const Vector2 selectedLocal = ProjectBlochToScreen(app.bloch, app.blochCamera, app.rightW, app.targetH, sphere.width * 0.5f);
+        const Vector2 nextSelectedScreen{
+            rightPanel.x + selectedLocal.x + mouseDelta.x,
+            rightPanel.y + selectedLocal.y + mouseDelta.y
+        };
+        PickBlochPoint(nextSelectedScreen, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
+#else
         PickBlochPoint(mouse, sphere, app.blochCamera, app.drag.hemisphere, app.bloch);
+#endif
         if (app.pathTracing) {
             AddPathSample(app.pathTrace, app.bloch);
         }
@@ -792,7 +903,13 @@ void UpdateDrawFrame() {
     }
 
     StepRootTrackballCamera(app.camera, leftViewport, overDefaultButton, false, true, 3.5f, 18.0f);
+#if defined(PLATFORM_WEB)
+    if (app.drag.rotatingBloch) {
+        StepBlochOrbitDelta(app.blochCamera, mouseDelta);
+    }
+#else
     StepBlochOrbit(app.blochCamera, app.drag.rotatingBloch);
+#endif
 
     BeginTextureMode(app.leftTarget);
     BeginMode3D(app.camera);
