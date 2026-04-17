@@ -42,6 +42,21 @@
     const canvas = document.getElementById("canvas");
     const status = document.getElementById("status");
 
+    function syncCanvasSize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    syncCanvasSize();
+    window.addEventListener("resize", syncCanvasSize);
+    canvas.addEventListener("pointerdown", (event) => {
+      canvas.focus();
+      if (canvas.setPointerCapture) {
+        canvas.setPointerCapture(event.pointerId);
+      }
+    });
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
     window.Module = {
       canvas,
       print(text) {

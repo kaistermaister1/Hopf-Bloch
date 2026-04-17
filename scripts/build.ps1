@@ -6,6 +6,7 @@ $compiler = "C:/msys64/ucrt64/bin/g++.exe"
 $source = Join-Path $root "src/hopf_fibration.cpp"
 $buildDir = Join-Path $root "build"
 $output = Join-Path $buildDir "hopf_fibration.exe"
+$rootOutput = Join-Path $root "hopf_fibration.exe"
 
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
@@ -35,7 +36,10 @@ foreach ($dll in $dlls) {
     $from = Join-Path "C:/msys64/ucrt64/bin" $dll
     if (Test-Path $from) {
         Copy-Item -LiteralPath $from -Destination $buildDir -Force
+        Copy-Item -LiteralPath $from -Destination $root -Force
     }
 }
 
+Copy-Item -LiteralPath $output -Destination $rootOutput -Force
 Write-Host "Built $output"
+Write-Host "Updated $rootOutput"

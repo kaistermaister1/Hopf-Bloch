@@ -42,7 +42,7 @@ raylib installed under `C:/msys64/ucrt64`.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
-.\build\hopf_fibration.exe
+.\hopf_fibration.exe
 ```
 
 Run the math check without opening the visualization:

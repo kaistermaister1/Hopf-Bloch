@@ -9,6 +9,7 @@
 
 #if defined(PLATFORM_WEB)
 #include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
 #endif
 
 namespace {
@@ -567,7 +568,7 @@ const BlochMarker BLOCH_MARKERS[] = {
 
 void DrawBlochMarkers3D() {
     for (const BlochMarker& marker : BLOCH_MARKERS) {
-        DrawSphere(marker.position, 0.062f, marker.color);
+        DrawSphere(marker.position, 0.040f, marker.color);
     }
 }
 
@@ -581,7 +582,7 @@ void DrawBlochMarkerKey(int width) {
 
     DrawRectangle(x - 14, y - 14, totalW + 24, 34, Color{7, 10, 15, 165});
     for (const BlochMarker& marker : BLOCH_MARKERS) {
-        DrawCircle(x, y + 2, 6.0f, marker.color);
+        DrawCircle(x, y + 2, 4.0f, marker.color);
         DrawText(marker.label, x + 12, y - 7, fontSize, Color{222, 233, 236, 255});
         x += itemW;
     }
@@ -701,6 +702,18 @@ void InitApp(AppState& state) {
 }
 
 void UpdateDrawFrame() {
+#if defined(PLATFORM_WEB)
+    double cssWidth = 0.0;
+    double cssHeight = 0.0;
+    if (emscripten_get_element_css_size("#canvas", &cssWidth, &cssHeight) == EMSCRIPTEN_RESULT_SUCCESS) {
+        const int canvasWidth = std::max(900, static_cast<int>(std::round(cssWidth)));
+        const int canvasHeight = std::max(620, static_cast<int>(std::round(cssHeight)));
+        if (canvasWidth != GetScreenWidth() || canvasHeight != GetScreenHeight()) {
+            SetWindowSize(canvasWidth, canvasHeight);
+        }
+    }
+#endif
+
     const int screenW = std::max(900, GetScreenWidth());
     const int screenH = std::max(620, GetScreenHeight());
     const int nextLeftW = std::max(360, static_cast<int>(screenW * 0.62f));
@@ -732,7 +745,7 @@ void UpdateDrawFrame() {
 
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && overSphere) {
         const Vector2 selectedScreen = ProjectBlochToScreen(app.bloch, sphere, app.blochCamera);
-        if (Vector2Distance(mouse, selectedScreen) <= 28.0f) {
+        if (Vector2Distance(mouse, selectedScreen) <= 42.0f) {
             app.drag.draggingBloch = true;
         } else {
             app.drag.rotatingBloch = true;
